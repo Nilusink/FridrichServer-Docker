@@ -7,8 +7,8 @@ FROM python:3.10.0
 WORKDIR /usr/src/app/
 
 # for superuser
-RUN apt-get update \
- && apt-get install -y sudo
+RUN apt-get update -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false \
+  && apt-get install -y sudo
 
 RUN adduser --disabled-password --gecos '' docker
 RUN adduser docker sudo
@@ -19,7 +19,6 @@ USER docker
 # installing requirements
 COPY ./ ./
 
-RUN sudo apt-get update -y
 RUN sudo apt-get upgrade -y
 RUN sudo apt-get install python-dev -y
 RUN sudo pip install --no-cache-dir -r requirements.txt
