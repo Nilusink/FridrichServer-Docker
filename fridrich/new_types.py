@@ -109,27 +109,52 @@ class FileVar:
         self.type = type(value)
 
         for file in self.files:
-            with open(file, 'w') as out:
-                if self.type == dict:
-                    json.dump(self.value, out, indent=4)
-                    continue
-                out.write(self.value)
+            for _ in range(5):  # check five times if a file is already opened, if failed then pass
+                try:
+                    with open(file, 'w') as out:
+                        if self.type == dict:
+                            json.dump(self.value, out, indent=4)
+                            break
+                        out.write(self.value)
+                        break
+
+                except IOError:
+                    time.sleep(.2)
+
+                except json.JSONDecodeError:
+                    with open(file, "w") as out_p:
+                        json.dump({}, out_p)
+
+            else:
+                raise IOError(f"Can't access file {file}")
 
     def get(self) -> str | dict:
         """
         get the variable in its original type
         """
         file = self.files[0]
-        with open(file, 'r') as inp:
+        for _ in range(5):
             try:
-                self.value = json.load(inp)
+                with open(file, 'r') as inp:
+                    try:
+                        self.value = json.load(inp)
 
-            except json.JSONDecodeError: 
-                self.value = inp.read()
-        
-        self.type = type(self.value)
+                    except json.JSONDecodeError:
+                        self.value = inp.read()
 
-        return self.value
+                self.type = type(self.value)
+
+                return self.value
+
+            except IOError:
+                time.sleep(.2)
+
+            except json.JSONDecodeError:
+                with open(file, "w") as out_p:
+                    json.dump({}, out_p)
+
+        else:
+            raise IOError(f"Can't access file {file}")
 
     def check_type(self, wanted_type: typing.Type[str] | typing.Type[dict]) -> None:
         """
@@ -140,7 +165,7 @@ class FileVar:
 
 
 class User:
-    def __init__(self, name: str, sec: str, key: str, cl: socket.socket, ip: str, function_manager: typing.Callable) -> None:
+    def __init__(self, name: str, sec: str, key: str, user_id: int, cl: socket.socket, ip: str, function_manager: typing.Callable, debugger) -> None:
         """
         :param name: Name of the client
         :param sec: security clearance
@@ -148,14 +173,17 @@ class User:
         :param cl: the users socket instance
         :param ip: the users host ip
         :param function_manager: the manager class for executing functions
+        :param debugger: a instance of server_funcs.Debug
         """
         self.__name = name
         self.__sec = sec
         self.__key = key
+        self.__id = user_id
 
         self.__client = cl
         self.__ip = ip
         self.manager = function_manager
+        self.debugger = debugger
 
         self.disconnect = False
 
@@ -181,6 +209,13 @@ class User:
         :return: the users host-ip
         """
         return self.__ip
+
+    @property
+    def id(self) -> int:
+        """
+        :return: the users id
+        """
+        return self.__id
 
     def receive(self) -> None:
         """
@@ -222,7 +257,13 @@ class User:
             self.send(msg)
             return
         else:
-            error, info = self.manager(message, self)
+            try:
+                error, info = self.manager(message, self)
+
+            except Exception as e:
+                self.debugger.write_traceback(e, from_user=self.name)
+                return
+
         if error:
             self.send({"Error": error, "info": info}, message_type='Error')
 
@@ -268,6 +309,13 @@ class UserList:
         """
         for element in self._users:
             yield element.name
+
+    def sendall(self, message: dict | str) -> None:
+        for user in self._users:
+            user.send({
+                "time": time.time(),
+                "content": message
+            })
 
     def append(self, obj: User) -> None:
         """

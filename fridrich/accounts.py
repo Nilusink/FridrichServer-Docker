@@ -4,7 +4,8 @@ used for managing user Accounts
 
 Author: Nilusink
 """
-from threading import Thread
+import random
+
 from fridrich import *
 import json
 
@@ -28,41 +29,28 @@ class Manager:
         account_file - file to store encrypted account data in
         """
         self.__encryptionFile = account_file
-        tmp = json.load(open(self.__encryptionFile, 'r'))
-        for element in tmp:
-            element["pwd"] = cryption_tools.High.decrypt(element["pwd"])
-        self.__accounts = tmp
 
-    def update_file(self, thread: bool | None = True) -> None:
-        """
-        write changed accounts to file
-        """
-        if thread:
-            Thread(target=self.update_file, kwargs={"thread": False})
-            return
+        self.__accounts = self.__get_file()
 
-        tmp = list()
-        for account in self.__accounts:
-            print(f"encrypting: {account}")
-            temp = account.copy()
-            temp["pwd"] = cryption_tools.High.encrypt(temp["pwd"])
-            tmp.append(temp)
-        print("encrypted, writing...")
-        with open(self.__encryptionFile, 'w') as out:
-            json.dump(tmp, out)
-        print("done writing file")
-
-    def get_accounts(self) -> list:
+    def __get_file(self) -> list:
         """
-        get account data
+        decrypt the user passwords with threads
         """
-        return self.__accounts
+        return json.load(open(self.__encryptionFile))
 
     def __write_accounts(self, accounts: list) -> None:
         """
         write account file
         """
         self.__accounts = accounts
+        with open(self.__encryptionFile, 'w') as out:
+            json.dump(self.__accounts, out, indent=4)
+
+    def get_accounts(self) -> list:
+        """
+        get account data
+        """
+        return self.__accounts
 
     def set_pwd(self, username: str, new_password: str) -> None:
         """
@@ -80,6 +68,7 @@ class Manager:
         change username
         """
         UsedNames = useful.List.get_inner_dict_values(self.__accounts, 'Name')
+        UsedNames.remove(old_user)
 
         element = str()
         i = int()
@@ -114,12 +103,34 @@ class Manager:
         """
         add new user
         """
+        # variables
+        new_acc: dict
+        ids: list
+        new_id: int
+
         UsedNames = useful.List.get_inner_dict_values(self.__accounts, 'Name')
-
         if username in UsedNames:
-            return
+            raise NameError(f'Username {username} already exists: {UsedNames}')
 
-        self.__accounts.append({'Name': username, 'pwd': password, 'sec': security_clearance})  # create user
+        # create new id for user
+        ids = [user["id"] for user in self.__accounts]
+        new_id = random.randint(10000, 99999)
+
+        if len(ids) >= 90000:
+            raise NotImplementedError("Too many accounts registered!")
+
+        while new_id in ids:
+            new_id = random.randint(10000, 99999)
+
+        # add account
+        new_acc = {
+            'Name': username,
+            'pwd': password,
+            'sec': security_clearance,
+            "id": new_id
+        }
+
+        self.__accounts.append(new_acc)  # create user
     
     def remove_user(self, username: str) -> None:
         """
@@ -133,19 +144,21 @@ class Manager:
         
         self.__write_accounts(accounts)    # update accounts
 
-    def verify(self, username: str, password: str) -> None | str:
+    def verify(self, username: str, password: str) -> (None | bool, dict):
         """
         return False or user security Clearance
         """
         users = self.get_accounts()  # get accounts
         Auth = False
+        user = {}
         for element in users:   # iterate users
             if username == element['Name'] and password == element['pwd']:  # if username is account name
                 if 'sec' in element:
-                    Auth = element['sec']   # set element 'sec' of user
-                    if Auth == '':
+                    if element['sec'] == '':
                         Auth = None
-                else:
-                    Auth = None
+                        continue
+                    user = element
+                    Auth = True
+                    break
 
-        return Auth  # return result
+        return Auth, user  # return result

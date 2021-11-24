@@ -19,6 +19,8 @@ from fridrich.server_funcs import *
 from fridrich.new_types import *
 from fridrich import app_store
 
+COM_PROTOCOL_VERSIONS = tuple(["1.0.0"])
+
 Const = Constants()
 debug = Debug(Const.SerlogFile, Const.errFile)
 
@@ -42,7 +44,7 @@ def verify(username: str, password: str, cl: socket.socket, address: str) -> Non
     """
     verify the client and send result
     """
-    resp = AccManager.verify(username, password)
+    resp, logged_in_user = AccManager.verify(username, password)
     IsValid = False
     key = None
     new_user = None
@@ -54,7 +56,7 @@ def verify(username: str, password: str, cl: socket.socket, address: str) -> Non
     elif resp:
         IsValid = True
         key = key_func(length=30)
-        new_user = User(name=username, sec=resp, key=key, cl=cl, ip=address, function_manager=FunManager.exec)
+        new_user = User(name=logged_in_user["Name"], sec=logged_in_user["sec"], key=key, user_id=logged_in_user["id"], cl=cl, ip=address, function_manager=FunManager.exec, debugger=debug)
         Users.append(new_user)
         
     debug.debug(new_user)   # print out username, if connected successfully or not and if it is a bot
@@ -108,11 +110,18 @@ def client_handler() -> None:
 
     mes = json.loads(t_mes)
     if mes['type'] == 'auth':   # authorization function
+        # instantly raise an error if the COM_PROTOCOL_VERSION is not compatible
+        if mes["com_protocol_version"] not in COM_PROTOCOL_VERSIONS:
+            Communication.send(cl, {
+                "Error": "RuntimeError",
+                "info": f"Invalid COM_PROTOCOL_VERSION, allowed: {COM_PROTOCOL_VERSIONS}"
+            }, encryption=MesCryp.encrypt)
+
         verify(mes['Name'], mes['pwd'], cl, address)
         return
 
     else:
-        Communication.send(cl, {'error': 'AuthError', 'info': 'user must be logged in to user functions'}, encryption=MesCryp.encrypt)
+        Communication.send(cl, {'Error': 'AuthError', 'info': 'user must be logged in to user functions'}, encryption=MesCryp.encrypt)
         return
 
 
@@ -205,7 +214,7 @@ class DoubleVote:
 
         self.value = new_types.FileVar(value, self.filePath)
 
-    def vote(self, vote: str, user: str) -> bool:
+    def vote(self, vote: str, user_id: int) -> bool:
         """
         if the user has any double votes left,
 
@@ -215,46 +224,45 @@ class DoubleVote:
 
         value = self.value.get()
         tmp = Vote.get()
-        if user in value:
-            if value[user] < 1:
+        if user_id in value:
+            if value[user_id] < 1:
                 return False
             try:
-                tmp['GayKing'][user+'2'] = vote
+                tmp['GayKing'][str(user_id)+'2'] = vote
             except KeyError:
                 tmp['GayKing'] = dict()
-                tmp['GayKing'][user+'2'] = vote
+                tmp['GayKing'][str(user_id)+'2'] = vote
 
-            value[user] -= 1
+            value[user_id] -= 1
             self.value.set(value)
             Vote.set(tmp)
             return True
         
-        value[user] = 0
+        value[user_id] = 1
         self.value.set(value)
         return False
 
-    def unvote(self, user: str, voting: str) -> None:
+    def unvote(self, user_id: int, voting: str) -> None:
         """
         unvote DoubleVote
         """
         global Vote
         tmp = Vote.get()
         with suppress(KeyError):
-            tmp[voting].pop(user+'2')
+            tmp[voting].pop(str(user_id)+'2')
         
             value = self.value.get()
-            value[user] += 1
+            value[user_id] += 1
             self.value.set(value)
         Vote.set(tmp)
 
-    def get_frees(self, user: str) -> int:
+    def get_frees(self, user_id: int) -> int:
         """
         returns the free double-votes for the given users
         """
         value = self.value.get()
-        if user in value:
-            return value[user]
-
+        if user_id in value:
+            return value[user_id]
         return False
 
 
@@ -279,7 +287,9 @@ class FunctionManager:
 
                 'setVersion': ClientFuncs.set_version,
                 'getVersion': ClientFuncs.set_version,
-                'gOuser': ClientFuncs.get_online_users
+                'gOuser': ClientFuncs.get_online_users,
+
+                "ping": UserTools.ping
             },
             'user': {                                  # instead of 5 billion if'S
                 'vote': ClientFuncs.vote,
@@ -304,23 +314,34 @@ class FunctionManager:
                 'get_apps': app_store.send_apps,
                 'download_app': app_store.download_app,
                 'create_app': app_store.receive_app,
-                "modify_app": app_store.modify_app
+                "modify_app": app_store.modify_app,
+                
+                "ping": UserTools.ping,
+
+                "get_temps": WStationFuncs.get_all
             },
             'guest': {                                  # instead of 5 billion if'S
                 'CalEntry': ClientFuncs.calendar_handler,
                 'getVersion': ClientFuncs.get_version,
                 'getVote': ClientFuncs.get_vote,
                 'req': ClientFuncs.req_handler,
-                'end': ClientFuncs.end
+                'end': ClientFuncs.end,
+
+                "ping": UserTools.ping
             },
             'bot': {
                 'setVersion': ClientFuncs.set_version,
                 'getVersion': ClientFuncs.get_version,
-                'end': ClientFuncs.end
+                'end': ClientFuncs.end,
+
+                "ping": UserTools.ping
+            },
+            'w_station': {
+                "register": WStationFuncs.register,
+                "commit": WStationFuncs.commit_data
             }
         }
 
-    @debug.catch_traceback
     def exec(self, message: dict, user: User) -> typing.Tuple[bool, typing.Any] | typing.Tuple[str, str]:
         """
         execute the requested function or return error
@@ -394,7 +415,12 @@ class AdminFuncs:
         """
         add a new user with set name, password and clearance
         """
-        AccManager.new_user(message['Name'], message['pwd'], message['sec'])
+        try:
+            AccManager.new_user(message['Name'], message['pwd'], message['sec'])
+
+        except NameError:
+            user.send({"Error": "NameError", "info": "user already exists"})
+
         send_success(user, message)
     
     @staticmethod
@@ -439,7 +465,7 @@ class ClientFuncs:
             Vote.__setitem__(message['voting'], dict())
             
         tmp = Vote.get()
-        tmp[message['voting']][user.name] = resp
+        tmp[message['voting']][str(user.id)] = resp
         Vote.set(tmp)    # set vote
         debug.debug(f'got vote: {message["vote"]}                     .')   # print that it received vote (debugging)
 
@@ -452,8 +478,9 @@ class ClientFuncs:
         """
         global Vote
         tmp = Vote.get()
-        with suppress(KeyError): 
-            del tmp[message['voting']][user.name]  # try to remove vote from client, if client hasn't voted yet, ignore it
+        with suppress(KeyError):
+            debug.debug(f"voting: {tmp}, user id: {user.id}, userid in voting: {str(user.id) in tmp[message['voting']]}")
+            del tmp[message['voting']][str(user.id)]  # try to remove vote from client, if client hasn't voted yet, ignore it
         Vote.set(tmp)
         send_success(user, message)
 
@@ -537,9 +564,9 @@ class ClientFuncs:
         """
         change the password of the user (only for logged in user)
         """
-        validUsers = json.loads(cryption_tools.Low.decrypt(open(Const.crypFile, 'r').read()))
+        validUsers = AccManager.get_accounts()
         for element in validUsers:
-            if element['Name'] == user.name:
+            if element['id'] == user.id:
                 element['pwd'] = message['newPwd']
         
         with open(Const.crypFile, 'w') as output:
@@ -559,7 +586,7 @@ class ClientFuncs:
         else:
             x = ''
 
-        name = user.name + x
+        name = str(user.id) + x
         if not message['voting'] in Vote.get():
             mes = {
                 "content": {'Error': 'NotVoted'},
@@ -609,9 +636,9 @@ class ClientFuncs:
         """
         double vote
         """
-        name = user.name
+        user_id = user.id
         resp = check_if(message['vote'], Vote.get(), message['voting'])     
-        resp = DV.vote(resp, name)
+        resp = DV.vote(resp, user_id)
         if resp:
             send_success(user, message)
         else:
@@ -627,8 +654,8 @@ class ClientFuncs:
         double unvote
         """
         global DV
-        name = user.name
-        DV.unvote(name, message['voting'])
+        user_id = user.id
+        DV.unvote(user_id, message['voting'])
         send_success(user, message)
 
     @staticmethod
@@ -637,8 +664,8 @@ class ClientFuncs:
         get free double votes of logged in user
         """
         global DV
-        name = user.name
-        frees = DV.get_frees(name)
+        user_id = user.id
+        frees = DV.get_frees(user_id)
 
         if frees is False and frees != 0:
             mes = {
@@ -756,6 +783,132 @@ class ClientFuncs:
             Users.remove(user)
 
 
+class WStationFuncs:
+    """
+    for weather-stations to commit data to the pool
+    """
+    @staticmethod
+    def register(message: dict, user: User, *_args) -> None:
+        """
+        register a new weather-station
+        """
+        tmp: list
+        try:
+            tmp = json.load(open(Const.WeatherDir+"all.json", "r"))
+
+        except json.JSONDecodeError:
+            tmp = []
+
+        for element in tmp:
+            if message["station_name"] == element["station_name"]:
+                mes = {
+                    "content": {
+                        'Error': 'RegistryError',
+                        "info": "weather-station is already registered"
+                    },
+                    "time": message['time']
+                }
+                user.send(mes)
+                return
+
+        tmp.append({
+            "station_name": message["station_name"],
+            "location": message["location"]
+        })
+
+        with open(Const.WeatherDir+"all.json", "w") as out_file:
+            json.dump(tmp, out_file, indent=4)
+
+        with open(Const.WeatherDir+message["station_name"], "w") as out_file:
+            out_file.write("[]")
+
+        send_success(user, message)
+
+    @staticmethod
+    def commit_data(message: dict, user: User, *_args) -> None:
+        """
+        commit data for already registered stations
+        """
+        now_data: dict
+        station_data: dict
+        if not WStationFuncs.check_if_registered(message, user, *_args):
+            mes = {
+                "content": {
+                    'Error': 'RegistryError',
+                    "info": "weather-station is not registered yet"
+                },
+                "time": message['time']
+            }
+            user.send(mes)
+            return
+
+        try:
+            now_data = json.load(open(Const.WeatherDir+"now.json", "r"))
+
+        except json.JSONDecodeError:
+            now_data = {}
+
+        now_data[message["station_name"]] = {
+            "time": message["time"],
+            "temp": message["temp"],
+            "hum": message["hum"],
+            "press": message["press"]
+        }
+
+        with open(Const.WeatherDir+"now.json", "w") as out_file:
+            json.dump(now_data, out_file, indent=4)
+
+        try:
+            station_data = json.load(open(Const.WeatherDir+message["station_name"], "r"))
+
+        except json.JSONEncoder:
+            station_data = {}
+
+        station_data[message["time"]] = {
+            "temp": message["temp"],
+            "hum": message["hum"],
+            "press": message["press"]
+        }
+
+        with open(Const.WeatherDir + message["station_name"], "w") as out_file:
+            json.dump(station_data, out_file, indent=4)
+
+        send_success(user, message)
+
+    @staticmethod
+    def check_if_registered(message: dict, _user: User, *_args) -> bool:
+        """
+        check if a weather-station is already registered
+        """
+        return message["station_name"] in json.load(open(Const.WeatherDir+"all.json", "r"))
+
+    @staticmethod
+    def get_all(message: dict, user: User, *_args) -> None:
+        """
+        send a dict of all weather-stations with their current measurement
+        """
+        tmp_data: str
+        try:
+            now_data = json.load(open(Const.WeatherDir+"now.json", "r"))
+
+        except json.JSONDecodeError:
+            now_data = {}
+
+        user.send(({
+            "content": now_data,
+            "time": message["time"]
+        }))
+
+
+class UserTools:
+    """
+    tools to use for the user
+    """
+    @staticmethod
+    def ping(message: dict, user: User, *_args) -> None:
+        send_success(user, message)
+
+
 def receive() -> None:
     """
     Basically the whole server
@@ -769,7 +922,6 @@ def update() -> None:
     updates every few seconds
     """
     global reqCounter
-    start = time.time()
     while not Const.Terminate:
         # --------  00:00 switch ---------
         zero_switch(Const.switchTime)
@@ -777,9 +929,7 @@ def update() -> None:
         # --------- daily reboot ---------
         auto_reboot(Const.rebootTime)
 
-        # --------- Accounts File ---------
-        if time.strftime("%M") in ("00", "15", "30", "45"):  # update every 15 minutes
-            AccManager.update_file()
+        time.sleep(1)
 
 
 ############################################################################
@@ -789,11 +939,6 @@ if __name__ == '__main__':
     server = socket.socket()
     try:
         reqCounter = 0
-        temps = {
-                 "temp": float(),
-                 "cptemp": float(),
-                 "hum": float()
-        }
         
         AccManager = Manager(Const.crypFile)
         FunManager = FunctionManager()

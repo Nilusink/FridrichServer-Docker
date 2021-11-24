@@ -107,7 +107,8 @@ def receive_app(message: dict, user: new_types.User, modify: bool | None = False
             json.dump({
                        "version": message["version"],
                        "info": message["info"],
-                       "publisher": user.name
+                       "publisher": user.name,
+                       "publisher_id": user.id
             }, out, indent=4)
 
     msg = {
@@ -142,7 +143,7 @@ def modify_app(message: dict, user: new_types.User) -> None:
         })
         return
 
-    if not app["publisher"] == user.name:
+    if app["publisher_id"] != user.id:
         user.send({
             "content": {
                 "error": f"App can only be modified by creator! {app['publisher']}"
@@ -150,6 +151,9 @@ def modify_app(message: dict, user: new_types.User) -> None:
             "time": message['time']
         })
         return
+
+    if app["publisher"] != user.name:
+        app["publisher"] = user.name
 
     with open("/home/pi/Server/fridrich/settings.json", 'r') as inp:
         directory = json.load(inp)["AppStoreDirectory"]
@@ -163,7 +167,7 @@ def modify_app(message: dict, user: new_types.User) -> None:
         json.dump(tmp, out, indent=4)
 
     for file in message["to_remove"]:
-        os.remove(directory+'/'+app['name'+'/'+file])
+        os.remove(directory+'/'+app['name']+'/'+file)
 
     if message["name"] != app["name"]:
         os.system(f"mv {directory+'/'+app['name']+'/'} {directory+'/'+message['name']+'/'}")

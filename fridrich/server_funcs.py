@@ -95,6 +95,13 @@ class Debug:
                 self.debug(err)
         return wrapper
 
+    def write_traceback(self, error: type, from_user: str | None = ...) -> None:
+        """
+        write a caught error
+        """
+        err = '\n\n\n'+("From User: "+from_user if from_user is not ... else "")+f'######## - Exception "{error}" on {datetime.datetime.now().strftime("%H:%M:%S.%f")} - ########\n\n{traceback.format_exc()}\n\n######## - END OF EXCEPTION - ########\n\n\n'
+        self.debug(err)
+
 
 class Chat:
     """
@@ -201,6 +208,7 @@ class Constants:
         self.SerUpLogFile: str | None = ...
         self.ChatFile: str | None = ...
         self.VarsFile: str | None = ...
+        self.WeatherDir: str | None = ...
 
         self.varTempLog: str | None = ...
         self.varKingLogFile: str | None = ...
