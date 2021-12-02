@@ -19,8 +19,12 @@ class FileVar:
         """
         create a variable synced to one or more files
         """
-        self.files = files if type(files) in (list, tuple) else [files]
-        
+        # filter all items that are not a string
+        self.files = [file if type(file) == str else ... for file in files] if type(files) in (list, tuple) else [files]
+        # remove all non standard items
+        while ... in self.files:
+            self.files.remove(...)
+
         self.value = value
         self.type = type(value)
         
@@ -189,6 +193,13 @@ class User:
 
         self.loop = True
 
+        # message pool
+        self.__message_pool_names: typing.Tuple[str, str] = ("", "")
+        self.__message_pool: typing.Dict[str, typing.Any] = {}
+        self.__message_pool_index: int = 0
+        self.__message_pool_max: int = 0
+        self.__message_pool_time: str = ""
+
     @property
     def name(self) -> str:
         """
@@ -225,25 +236,76 @@ class User:
             try:
                 mes = cryption_tools.MesCryp.decrypt(self.__client.recv(2048), self.__key.encode())
 
+                mes = json.loads(mes)
+
+                # create message pool for request
+                self.__message_pool_names = tuple(func_name["type"] for func_name in mes["content"])
+                self.__message_pool_max = len(mes["content"])
+                self.__message_pool_time = mes["time"]
+                self.__message_pool_index = 0
+
                 if not mes or mes is None:
-                    self.send({'Error': 'MessageError', 'info': 'Invalid Message/AuthKey'})
+                    print("MessageError")
+                    self.send({'Error': 'MessageError', 'info': 'Invalid Message/AuthKey'}, message_type="Error", force=True)
                     continue
 
-                self.exec_func(json.loads(mes))
+                for message in mes["content"]:
+                    print("Executing")
+                    self.exec_func(message)
 
             except cryption_tools.NotEncryptedError:
-                self.send({'Error': 'NotEncryptedError'})
+                print("not encrypted")
+                self.send({'Error': 'NotEncryptedError'}, force=True)
                 return
 
-    def send(self, message: dict | list, message_type: str | None = 'function') -> None:
-        message['type'] = message_type
-        stringMes = json.dumps(message)
+    def send(self, message: dict | list | str, message_type: str | None = 'function', force: bool | None = False) -> None:
+        """
+        save the message(s) for sending
+        """
+        message = {
+            "content": message
+        }
+        if self.__message_pool_max == sum([0 if element is None else 1 for element in self.__message_pool]) and not force:
+            raise IndexError("trying to send message but no pool index is out of range")
 
+        message['type'] = message_type
+
+        try:
+            self.__message_pool[self.__message_pool_names[self.__message_pool_index]] = message
+            self.__message_pool_index += 1
+
+        except IndexError:  # if used with "force", appends the message in case of a IndexError (if the pool hasn't been created or something)
+            if force:
+                self.__message_pool["forced"] = message
+            else:
+                raise
+
+        if force or self.__message_pool_index == self.__message_pool_max:   # aka all functions are done
+            self._send()
+
+    def _send(self) -> None:
+        """
+        actually send the message
+        """
+        # process the message
+        mes = {
+            "content": self.__message_pool,
+            "time": self.__message_pool_time
+        }
+        stringMes = json.dumps(mes)
         mes = cryption_tools.MesCryp.encrypt(stringMes, key=self.__key.encode())
         length = pack('>Q', len(mes))   # get message length
 
+        # send to client
         self.__client.sendall(length)
         self.__client.sendall(mes)
+
+        # reset message pool
+        self.__message_pool = {}
+        self.__message_pool_index = 0
+        self.__message_pool_max = 0
+        self.__message_pool_time = ""
+        self.__message_pool_names = ()
 
     def exec_func(self, message: dict):
         """
@@ -315,7 +377,7 @@ class UserList:
             user.send({
                 "time": time.time(),
                 "content": message
-            })
+            }, force=True)
 
     def append(self, obj: User) -> None:
         """
@@ -361,7 +423,7 @@ class UserList:
         reset all users (clear self._users)
         """
         for user in self._users:
-            user.send({'warning': 'server_logout'}, message_type="disconnect")
+            user.send({'warning': 'server_logout'}, message_type="disconnect", force=True)
             user.end()
         self._users = list()
 

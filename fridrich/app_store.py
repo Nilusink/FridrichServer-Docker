@@ -23,7 +23,7 @@ def get_list() -> list:
     """
     :return: a list of available apps with versions
     """
-    with open("/home/pi/Server/fridrich/settings.json", 'r') as inp:
+    with open("/home/pi/Server/fridrich/server/settings.json", 'r') as inp:
         directory = json.load(inp)["AppStoreDirectory"]
 
     apps = list()
@@ -64,7 +64,7 @@ def download_app(message: dict, user: new_types.User) -> None:
     :param user: the user to send the answer to
     :return: None
     """
-    with open("/home/pi/Server/fridrich/settings.json", 'r') as inp:
+    with open("/home/pi/Server/fridrich/server/settings.json", 'r') as inp:
         directory = json.load(inp)["AppStoreDirectory"]
 
     files = tuple((file for file in os.listdir(directory+message["app"]) if file.endswith(".zip")))
@@ -84,7 +84,7 @@ def receive_app(message: dict, user: new_types.User, modify: bool | None = False
     :param modify: if true used for modifying apps
     :return: None
     """
-    with open("/home/pi/Server/fridrich/settings.json", 'r') as inp:
+    with open("/home/pi/Server/fridrich/server/settings.json", 'r') as inp:
         directory = json.load(inp)["AppStoreDirectory"]+message["name"]
 
     if not modify:
@@ -155,14 +155,15 @@ def modify_app(message: dict, user: new_types.User) -> None:
     if app["publisher"] != user.name:
         app["publisher"] = user.name
 
-    with open("/home/pi/Server/fridrich/settings.json", 'r') as inp:
+    with open("/home/pi/Server/fridrich/server/settings.json", 'r') as inp:
         directory = json.load(inp)["AppStoreDirectory"]
 
     with open(directory+"/"+app["name"]+"/AppInfo.json", 'w') as out:
         tmp = {
             "version": "nAn",
             "info": message["info"],
-            "publisher": user.name
+            "publisher": user.name,
+            "publisher_id": app["publisher_id"]
         }
         json.dump(tmp, out, indent=4)
 

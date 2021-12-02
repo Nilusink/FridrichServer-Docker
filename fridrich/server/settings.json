@@ -30,7 +30,7 @@
     "status_led_pin": 21,
     "status_led_sleep_time": ["00:30", "07:00"],
 
-    "AppStoreDirectory": "/usr/src/app/Apps/"
+    "AppStoreDirectory": "/usr/src/app/Apps/",
 
-    "WeatherDir": "/usr/src/app/weather/
+    "WeatherDir": "/usr/src/app/weather/"
 }

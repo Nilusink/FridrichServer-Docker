@@ -4,6 +4,7 @@ defines functions for the Server
 
 Author: Nilusink
 """
+from fridrich.server import Const
 from fridrich import new_types
 from fridrich import *
 import typing
@@ -14,7 +15,13 @@ import types
 import time
 import traceback
 import socket
-import os
+
+
+def send_success(user: new_types.User) -> None:
+    """
+    send the success message to the client
+    """
+    user.send({'Success': 'Done'})
 
 
 def check_if(s: str, d: dict, voting: str) -> str:
@@ -59,6 +66,7 @@ class Debug:
     """
     for debugging...
     """
+
     def __init__(self, deb_file: str, error_file: str) -> None:
         """
         debFile: file to write debug-messages to
@@ -68,10 +76,11 @@ class Debug:
 
         with open(self.file, 'w') as out:
             out.write('')
-        
+
         with open(self.errFile, 'a') as out:
-            out.write(f'\n\n\n\n\n######## - Program restart [{datetime.datetime.now().strftime("%Y.%m.%d at %H:%M:%S.%f")}] - ########\n\n')
-    
+            out.write(
+                f'\n\n\n\n\n######## - Program restart [{datetime.datetime.now().strftime("%Y.%m.%d at %H:%M:%S.%f")}] - ########\n\n')
+
     def debug(self, *args) -> None:
         """
         prints and writes all arguments
@@ -81,25 +90,28 @@ class Debug:
         print(*args)
         with open(self.file, 'a') as out:
             for element in args:
-                out.write(str(element)+'\n')
-    
+                out.write(str(element) + '\n')
+
     def catch_traceback(self, func: types.FunctionType) -> typing.Callable:
         """
         execute function with traceback and debug all errors
         """
+
         def wrapper(*args, **kw) -> None:
             try:
                 return func(*args, **kw)
             except Exception as e:
                 err = f'\n\n\n######## - Exception "{e}" on {datetime.datetime.now().strftime("%H:%M:%S.%f")} - ########\n\n{traceback.format_exc()}\n\n######## - END OF EXCEPTION - ########\n\n\n'
                 self.debug(err)
+
         return wrapper
 
     def write_traceback(self, error: type, from_user: str | None = ...) -> None:
         """
         write a caught error
         """
-        err = '\n\n\n'+("From User: "+from_user if from_user is not ... else "")+f'######## - Exception "{error}" on {datetime.datetime.now().strftime("%H:%M:%S.%f")} - ########\n\n{traceback.format_exc()}\n\n######## - END OF EXCEPTION - ########\n\n\n'
+        err = '\n\n\n' + (
+            "From User: " + from_user if from_user is not ... else "") + f'######## - Exception "{error}" on {datetime.datetime.now().strftime("%H:%M:%S.%f")} - ########\n\n{traceback.format_exc()}\n\n######## - END OF EXCEPTION - ########\n\n\n'
         self.debug(err)
 
 
@@ -117,7 +129,7 @@ class Chat:
         curr_time = datetime.datetime.now()
         formatted_time = curr_time.strftime('%H:%M:%S.%f')+time.strftime(' - %d.%m.%Y')
         mes.append({'time': formatted_time, 'content': message, 'user': from_user})  # append message
-        json.dump(mes, open(con.ChatFile, 'w'), indent=4)  # write message
+        json.dump(mes, open(Const.ChatFile, 'w'), indent=4)  # write message
     
     @staticmethod
     def get() -> list:
@@ -125,7 +137,7 @@ class Chat:
         get all messages
         """
         try:
-            mes = json.load(open(con.ChatFile, 'r'))  # try to read file
+            mes = json.load(open(Const.ChatFile, 'r'))  # try to read file
         except FileNotFoundError:
             mes = list()    # if file doesn't exist, create new list
         return mes
@@ -178,69 +190,3 @@ class Communication:
                 client.close()
             return None, None
         return client, mes
-
-
-class Constants:
-    """
-    All constants (modify in file settings.json)
-    """
-    def __init__(self) -> None:
-        """
-        create instance
-        """
-        # type hinting
-        self.port: int | None = ...
-        self.ip: str | None = ...
-        self.Terminate: bool | None = ...
-
-        self.direc: str | None = ...
-        self.vardirec: str | None = ...
-
-        self.lastFile: str | None = ...
-        self.nowFile: str | None = ...
-        self.KingFile: str | None = ...
-        self.CalFile: str | None = ...
-        self.crypFile: str | None = ...
-        self.versFile: str | None = ...
-        self.tempLog: str | None = ...
-        self.doubFile: str | None = ...
-        self.SerlogFile: str | None = ...
-        self.SerUpLogFile: str | None = ...
-        self.ChatFile: str | None = ...
-        self.VarsFile: str | None = ...
-        self.WeatherDir: str | None = ...
-
-        self.varTempLog: str | None = ...
-        self.varKingLogFile: str | None = ...
-        self.varLogFile: str | None = ...
-        self.varNowFile: str | None = ...
-
-        self.logFile: str | None = ...
-        self.errFile: str | None = ...
-        self.tempFile: str | None = ...
-
-        self.DoubleVotes: int | None = ...
-
-        self.DoubleVoteResetDay: str | None = ...
-        self.switchTime: str | None = ...
-        self.rebootTime: str | None = ...
-        self.status_led_pin: int | None = ...
-        self.status_led_sleep_time: list | None = ...
-
-        self.AppStoreDirectory: str | None = ...
-
-        # get variable values
-        try:
-            self.dic = json.load(open(os.getcwd()+'/fridrich/settings.json', 'r'))
-
-        except FileNotFoundError:
-            self.dic = json.load(open('/home/pi/Server/fridrich/settings.json', 'r'))
-        
-        for Index, Value in self.dic.items():
-            setattr(self, Index, Value)
-
-    def __getitem__(self, item) -> str | int | bool:
-        return self.dic[item]
-
-
-con = Constants()
