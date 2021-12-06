@@ -13,8 +13,8 @@ import time
 import json
 import os
 
-download_progress = float()
-download_program = str()
+download_progress: float = 0.0
+download_program: str = ""
 
 executor = ThreadPoolExecutor()
 
@@ -45,17 +45,13 @@ def get_list() -> list:
     return apps
 
 
-def send_apps(message: dict, user: new_types.User) -> None:
+def send_apps(_message: dict, user: new_types.User) -> None:
     """
-    :param message: the message received from the client (for the timestamp)
+    :param _message: the message received from the client (not used)
     :param user: the user to send the answer to
     :return: None
     """
-    msg = {
-        "content": get_list(),
-        "time": message["time"]
-    }
-    user.send(msg)
+    user.send(get_list())
 
 
 def download_app(message: dict, user: new_types.User) -> None:
@@ -68,11 +64,8 @@ def download_app(message: dict, user: new_types.User) -> None:
         directory = json.load(inp)["AppStoreDirectory"]
 
     files = tuple((file for file in os.listdir(directory+message["app"]) if file.endswith(".zip")))
-    msg = {
-        "content": files,
-        "time": message["time"]
-    }
-    user.send(msg)
+
+    user.send(files)
     for file in files:
         send_receive(mode="send", filename=directory+message["app"]+'/'+file, destination=user.ip, print_steps=False)
 
@@ -91,10 +84,7 @@ def receive_app(message: dict, user: new_types.User, modify: bool | None = False
         if os.path.isdir(directory):
             files = os.listdir(directory)
             if "AppInfo.json" in files:  # check if directory is empty, else send error
-                user.send({
-                    "content": {"error": "ValueError", "info": f"App with name {message['name']} already exists"},
-                    "time": message["time"]
-                })
+                user.send({"error": "ValueError", "info": f"App with name {message['name']} already exists"})
                 return
             else:
                 if len(files) != 0:
@@ -111,11 +101,7 @@ def receive_app(message: dict, user: new_types.User, modify: bool | None = False
                        "publisher_id": user.id
             }, out, indent=4)
 
-    msg = {
-        "content": {"success": True},
-        "time": message["time"]
-    }
-    user.send(msg)
+    user.send({"success": True})
 
     for _ in message["files"]:
         send_receive(mode='receive', print_steps=False, download_directory=directory, thread=False, overwrite=True)
@@ -136,20 +122,14 @@ def modify_app(message: dict, user: new_types.User) -> None:
         app = {app["name"]: app for app in get_list()}[message["o_name"]]
     except KeyError:
         user.send({
-            "content": {
                 "error": f"App {message['o_name']} doesn't exist"
-            },
-            "time": message['time']
-        })
+            })
         return
 
     if app["publisher_id"] != user.id:
         user.send({
-            "content": {
                 "error": f"App can only be modified by creator! {app['publisher']}"
-            },
-            "time": message['time']
-        })
+            })
         return
 
     if app["publisher"] != user.name:
@@ -159,12 +139,14 @@ def modify_app(message: dict, user: new_types.User) -> None:
         directory = json.load(inp)["AppStoreDirectory"]
 
     with open(directory+"/"+app["name"]+"/AppInfo.json", 'w') as out:
+        print(f"before: {app}")
         tmp = {
             "version": "nAn",
             "info": message["info"],
             "publisher": user.name,
             "publisher_id": app["publisher_id"]
         }
+        print(f"after: {tmp}")
         json.dump(tmp, out, indent=4)
 
     for file in message["to_remove"]:

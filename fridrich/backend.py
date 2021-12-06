@@ -24,16 +24,6 @@ COMM_PROTOCOL_VERSION = "1.1.0"
 ############################################################################
 #                             other functions                              #
 ############################################################################
-def json_repair(string: str) -> str:
-    """
-    if two messages are scrambled together, split them and use the first one
-    """
-    parts = string.split('}{')  # happens sometimes, probably because python is to slow
-    if len(parts) > 1:
-        return parts[0]+'}'
-    return string
-
-
 def date_for_sort(message) -> str:
     """
     go from format "hour:minute:second:millisecond - day.month.year" to "year.month.day - hour:minute:second:millisecond"
@@ -58,23 +48,24 @@ def debug(func: Callable) -> Callable:
 #                      Server Communication Class                          #
 ############################################################################
 class Connection:
-    def __init__(self, debug_mode: str | None = Off, host: str | None = 'fridrich') -> None:
+    def __init__(self, debug_mode: str | None = Off, host: str | None = ...) -> None:
         """
         connect with any fridrich server
-        options:
-            ``debug_mode`` - ``"normal"`` | ``"full"`` | ``False``
 
-            ``host`` - name of the host, either IP or hostname / address
+        :param debug_mode: "normal" | "full" | False
+        :param host: name of the host, either IP or hostname / address
         """
         self._messages = dict()
         self._server_messages = dict()
         self.Server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # create socket instance
-        self.debug_mode = debug_mode
+        self._debug_mode = debug_mode
 
-        self.__ServerIp = ""
-        self.server_ip = host
+        self.__ServerIp = None
 
-        if self.debug_mode in ('normal', 'full'):
+        if host is not ...:
+            self.server_ip = host
+
+        if self._debug_mode in ('normal', 'full'):
             print(ConsoleColors.OKGREEN + 'Server IP: ' + self.server_ip + ConsoleColors.ENDC)
         self.port = 12345   # set communication port with server
 
@@ -110,7 +101,7 @@ class Connection:
     def server_ip(self, value: str) -> None:
         sl = value.split('.')
         if len(sl) == 4 and all([digit in '0123456789' for element in sl for digit in element]):
-            if self.debug_mode in ("full", "normal"):
+            if self._debug_mode in ("full", "normal"):
                 try:
                     socket.gethostbyaddr(value)
                 except socket.herror:
@@ -119,8 +110,19 @@ class Connection:
         else:
             self.__ServerIp = socket.gethostbyname(value)  # get ip of fridrich
 
-        if self.debug_mode == 'full':
+        if self._debug_mode == 'full':
             print(self.server_ip)
+
+    @property
+    def debug_mode(self) -> str:
+        return self._debug_mode
+
+    @debug_mode.setter
+    def debug_mode(self, value: str) -> None:
+        allowed = ("normal", "full", False)
+        if value not in allowed:
+            raise ValueError(f"must be {' or '.join([str(el) for el in allowed])}")
+        self._debug_mode = value
 
     # "local" functions
     @staticmethod
@@ -164,8 +166,6 @@ class Connection:
         """
         for response in responses.keys():
             match response:
-                case "secReq":
-                    responses["seqReq"] = responses[response]['sec']
 
                 case "gRes":
                     res = responses[response]
@@ -174,7 +174,6 @@ class Connection:
                     for voting in res:
                         attendants = dict()  # create dictionary with all attendants: votes
                         nowVoting = res[voting]
-                        print(nowVoting)
                         for element in [nowVoting[element] for element in nowVoting] + (['Lukas', 'Niclas', 'Melvin'] if voting == 'GayKing' else []):
                             attendants[element] = 0
 
@@ -206,6 +205,7 @@ class Connection:
     def _send(self, dictionary: dict, wait: bool | None = False) -> float | None:
         """
         send messages to server
+
         :param dictionary: dict to send
         :param wait: don't send the messages immediately and wait
         :return: time of sending
@@ -216,8 +216,18 @@ class Connection:
             return self.__send()
 
     def __send(self) -> float:
+        """
+        the actual sending process
+        """
+        # check errors before executing
+        if not self.server_ip:
+            raise Error("no host set")
+
         if not self.__nonzero__():
             raise AuthError("Not authenticated")
+
+        if len(self.__message_pool) == 0:
+            raise ValueError("Message Pool Empty")
 
         for element in self.__message_pool:
             if "message" in element:
@@ -235,16 +245,16 @@ class Connection:
             stringMes = json.dumps(message, ensure_ascii=True)
             mes = cryption_tools.MesCryp.encrypt(stringMes, key=self.AuthKey.encode())
             self.Server.send(mes)
-            if self.debug_mode in ('normal', 'full'):
+            if self._debug_mode in ('normal', 'full'):
                 print(ConsoleColors.OKCYAN+stringMes+ConsoleColors.ENDC)
-            if self.debug_mode == 'full':
+            if self._debug_mode == 'full':
                 print(ConsoleColors.WARNING+str(mes)+ConsoleColors.ENDC)
 
             return message["time"]
 
         stringMes = json.dumps(message, ensure_ascii=False)
         self.Server.send(cryption_tools.MesCryp.encrypt(stringMes))
-        if self.debug_mode in ('normal', 'full'):
+        if self._debug_mode in ('normal', 'full'):
             print(ConsoleColors.OKCYAN+stringMes+ConsoleColors.ENDC)
 
         return message["time"]
@@ -296,7 +306,6 @@ class Connection:
                 for _ in range(2):
                     mes = mes.replace("\\\\", "\\")
                 mes = json.loads(mes)
-                print(f"received message: {mes=}")
 
             except json.decoder.JSONDecodeError:
                 self._messages["Error"] = f"cant decode: {mes}, type: {type(mes)}"
@@ -339,10 +348,10 @@ class Connection:
         :return: message(dict)
         """
         start = time.time()
-        if self.debug_mode in ('full', 'normal'):
+        if self._debug_mode in ('full', 'normal'):
             print(f'waiting for message: {time_sent}')
         while time_sent not in self._messages:  # wait for server message
-            if self.debug_mode == 'full':
+            if self._debug_mode == 'full':
                 print(self._messages)
             if timeout and time.time()-start >= timeout:
                 raise NetworkError("no message was received from server before timeout")
@@ -356,10 +365,12 @@ class Connection:
         del self._messages[time_sent]
         if "Error" in out:
             self.error_handler(out["Error"], out)
-        if self.debug_mode in ('all', 'normal'):
+        if self._debug_mode in ('all', 'normal'):
             print(f"found message: {out}")
 
         out = self.response_handler(out)
+        if len(out) == 0:
+            raise MessageError("received empty message pool from server")
 
         return out
 
@@ -378,6 +389,9 @@ class Connection:
         """
         authenticate with the server
         """
+        if not self.server_ip:
+            raise Error("no host set")
+
         if not self.loop:
             raise Error("already called 'end'")
         self.reconnect()
@@ -868,7 +882,7 @@ class Connection:
 
     # magical functions
     def __repr__(self) -> str:
-        return f'Backend instance (debug_mode: {self.debug_mode}, user: {self._userN}, authkey: {self.AuthKey})'
+        return f'Backend instance (debug_mode: {self._debug_mode}, user: {self._userN}, authkey: {self.AuthKey})'
 
     def __str__(self) -> str:
         """
@@ -888,6 +902,15 @@ class Connection:
         """
         return self.__nonzero__()
 
+    def __enter__(self) -> "Connection":
+        return self
+
+    def __exit__(self, exception_type, value, traceback):
+        self.end(revive=False)
+        if exception_type is not None:
+            return False
+        return True
+
     # the end
     def end(self, revive: bool | None = False) -> None:
         """
@@ -896,7 +919,7 @@ class Connection:
         msg = {
                'type': 'end'
         }    # set message
-        with suppress(ConnectionResetError, ConnectionAbortedError):
+        with suppress(ConnectionResetError, ConnectionAbortedError, AuthError):
             self._send(msg, wait=False)  # send message
         app_store.executor.shutdown(wait=False)
         self.AuthKey = None

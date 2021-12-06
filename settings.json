@@ -1,0 +1,36 @@
+{
+    "port": 12345,
+    "ip": "0.0.0.0",
+    "Terminate": null,
+
+    "direc": "/usr/src/app/data/",
+
+    "lastFile": "/usr/src/app/data/yes.json",
+    "nowFile": "/usr/src/app/data/now.json",
+    "KingFile": "/usr/src/app/data/KingLog.json",
+    "CalFile": "/usr/src/app/data/Calendar.json",
+    "crypFile": "/usr/src/app/data/users.enc",
+    "versFile": "/usr/src/app/data/Version",
+    "tempLog": "/usr/src/app/data/tempData.json",
+    "doubFile": "/usr/src/app/data/dVotes.json",
+    "SerlogFile": "/usr/src/app/data/Server.log",
+    "SerUpLogFile": "/usr/src/app/data/Server.up.log",
+    "ChatFile": "/usr/src/app/data/chat.json",
+    "VarsFile": "/usr/src/app/data/vars.json",
+
+    "logFile": "/usr/src/app/data/temp.log",
+    "errFile": "/usr/src/app/data/Server.err.log",
+    "tempFile": "/usr/src/app/data/tempData.json",
+
+    "DoubleVotes": 1,
+
+    "DoubleVoteResetDay": "Mon",
+    "switchTime": "00:00",
+    "rebootTime": "00:03",
+    "status_led_pin": 21,
+    "status_led_sleep_time": ["00:30", "07:00"],
+
+    "AppStoreDirectory": "/usr/src/app/Apps/",
+
+    "WeatherDir": "/usr/src/app/weather/"
+}

@@ -80,7 +80,6 @@ def debug_send_traceback(func: types.FunctionType) -> typing.Callable:
     return wrapper
 
 
-# @debug_send_traceback
 @debug.catch_traceback
 def client_handler() -> None:
     """
@@ -343,17 +342,23 @@ class FunctionManager:
             'w_station': {
                 "register": WStationFuncs.register,
                 "commit": WStationFuncs.commit_data
+            },
+            "all": {
+                "secReq": UserTools.get_sec_clearance
             }
         }
 
-    def exec(self, message: dict, user: User) -> typing.Tuple[bool, typing.Any] | typing.Tuple[str, str]:
+    def exec(self, message: dict, user: User) -> None:
         """
         execute the requested function or return error
         """
+        error: dict = {}
         if user.sec in self.switch:
             if message['type'] in self.switch[user.sec]:
                 self.switch[user.sec][message['type']](message, user)
-                return False, None
+
+            elif message["type"] in self.switch["all"]:
+                self.switch["all"][message['type']](message, user)
             
             else:
                 isIn = False
@@ -365,13 +370,25 @@ class FunctionManager:
                 
                 if isIn:
                     debug.debug(f'user {user.sec} tried to use function {message["type"]} ({req})')
-                    return 'ClearanceIssue', f'Clearance required: {req}'
+                    error = {
+                        "Error": "ClearanceIssue",
+                        "info": f'Clearance required: {req}'
+                    }
                 
                 else:
-                    return 'InvalidRequest', f'Invalid Request: {message["type"]}'
+                    error = {
+                        "Error": "InvalidRequest",
+                        "info": f'Invalid Request: {message["type"]}'
+                    }
 
         else:
-            return 'ClearanceIssue', f'Clearance not set: {user.sec}'
+            error = {
+                "Error": "ClearanceIssue",
+                "info": f'Clearance not set: {user.sec}'
+            }
+
+        if error:
+            user.send(error, message_type="Error", force=True)
 
 
 class AdminFuncs:
@@ -574,19 +591,11 @@ class ClientFuncs:
 
         name = str(user.id) + x
         if not message['voting'] in Vote.get():
-            mes = {
-                "content": {'Error': 'NotVoted'},
-                "time": message['time']
-            }
-            user.send(mes)
+            user.send({'Error': 'NotVoted'})
             return
 
         if name not in Vote[message['voting']]:
-            mes = {
-                "content": {'Error': 'NotVoted'},
-                "time": message["time"]
-            }
-            user.send(mes)
+            user.send({'Error': 'NotVoted'})
             return
         cVote = Vote[message['voting']][name]
 
@@ -634,7 +643,7 @@ class ClientFuncs:
         send_success(user)
 
     @staticmethod
-    def get_free_votes(message: dict, user: User, *_args) -> None:
+    def get_free_votes(_message: dict, user: User, *_args) -> None:
         """
         get free double votes of logged in user
         """
@@ -643,11 +652,7 @@ class ClientFuncs:
         frees = DV.get_frees(user_id)
 
         if frees is False and frees != 0:
-            mes = {
-                "content": {'Error': 'RegistryError'},
-                "time": message["time"]
-            }
-            user.send(mes)
+            user.send({'Error': 'RegistryError'})
             return
 
         user.send({'Value': frees})
@@ -726,7 +731,7 @@ class ClientFuncs:
         if message["var"] in tmp:
             del tmp[message["var"]]
         else:  # if KeyError occurs
-            user.send({"content": {"Error": "KeyError", "info": message["var"]}, "time": message["time"]})
+            user.send({"Error": "KeyError", "info": message["var"]})
 
         json.dump(tmp, open(Const.VarsFile, 'w'), indent=4)
         send_success(user)
