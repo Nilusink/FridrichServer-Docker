@@ -239,7 +239,7 @@ class User:
                 mes = json.loads(mes)
 
                 # create message pool for request
-                self.__message_pool_names = tuple(func_name["type"] for func_name in mes["content"])
+                self.__message_pool_names = tuple(func_name["f_name"] if "f_name" in func_name else func_name["type"] for func_name in mes["content"])
                 self.__message_pool_max = len(mes["content"])
                 self.__message_pool_time = mes["time"]
                 self.__message_pool_index = 0
@@ -253,7 +253,7 @@ class User:
 
             except cryption_tools.NotEncryptedError:
                 print("not encrypted")
-                self.send({'Error': 'NotEncryptedError'}, force=True)
+                self.send({'Error': 'NotEncryptedError'}, message_type="Error", force=True)
                 return
 
     def send(self, message: iter, message_type: str | None = 'function', force: bool | None = False) -> None:
@@ -264,6 +264,7 @@ class User:
             "content": message
         }
         if self.__message_pool_max == sum([0 if element is None else 1 for element in self.__message_pool]) and not force:
+            print(f"Pool error: {self.__message_pool=}, {self.__message_pool_names=}, {message=}")
             raise IndexError("trying to send message but no pool index is out of range")
 
         message['type'] = message_type
@@ -443,3 +444,33 @@ class UserList:
             self.get_user(name=other, user_id=other)
             return True
         return False
+
+
+class Future:
+    def __init__(self) -> None:
+        self.__value: typing.Any | None = ...
+
+    @property
+    def result(self) -> typing.Any:
+        if self.__value is not ...:
+            return self.__value
+        raise ValueError("No value received yet")
+
+    @result.setter
+    def result(self, value) -> None:
+        self.__value = value
+
+    def __repr__(self) -> str:
+        return f"<future: result={self.__value is not ...}>"
+
+    def __nonzero__(self) -> bool:
+        """
+        return True if AuthKey
+        """
+        return self.__value is not ...
+
+    def __bool__(self) -> bool:
+        """
+        return True if AuthKey
+        """
+        return self.__nonzero__()

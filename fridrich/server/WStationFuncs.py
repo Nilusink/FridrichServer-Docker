@@ -26,7 +26,7 @@ def register(message: dict, user: User, *_args) -> None:
                     'Error': 'RegistryError',
                     "info": "weather-station is already registered"
                 }
-            user.send(mes)
+            user.send(mes, message_type="Error", force=True)
             return
 
     tmp.append({
@@ -54,7 +54,7 @@ def commit_data(message: dict, user: User, *_args) -> None:
                 'Error': 'RegistryError',
                 "info": "weather-station is not registered yet"
             }
-        user.send(mes)
+        user.send(mes, message_type="Error", force=True)
         return
 
     try:

@@ -24,7 +24,7 @@ from fridrich.server import *
 from fridrich.cryption_tools import key_func, MesCryp
 from fridrich import app_store
 
-COM_PROTOCOL_VERSIONS: set = {"1.1.0"}
+COM_PROTOCOL_VERSIONS: set = {"1.1.0", "1.1.1"}
 
 client: socket.socket
 Users = UserList()
@@ -92,10 +92,12 @@ def client_handler() -> None:
     except OSError:
         return
     # try to load the message, else ignore it and restart
+    b = cl.recv(2048)
     try:
-        t_mes = cryption_tools.MesCryp.decrypt(cl.recv(2048))
+        t_mes = cryption_tools.MesCryp.decrypt(b)
 
     except InvalidToken:
+        debug.debug(f"Received Message (undecryptable): {b.decode()}")
         Communication.send(cl, {'error': 'MessageError', 'info': "Couldn'T decrypt message with default key"}, encryption=MesCryp.encrypt)
         return
 
@@ -122,46 +124,55 @@ def zero_switch() -> None:
     """
     execute the switch
     """
-    with open(Const.lastFile, 'w') as output:    # get newest version of the "votes" dict and write it to the lastFile
-        with open(Const.nowFile, 'r') as inp:
-            last = inp.read()
-            output.write(last)
+    for voting, res in Vote:
+        log_out_file = Const.logDirec+voting+".json"
+        vote_res = list(res.values())
 
-    Vote.set({'GayKing': {}})
+        # has to be shortened
+        # get masters
+        masters: typing.List[str] = [max(vote_res, key=vote_res.count)]   # create list with members of highest votes
+        highest = vote_res.count(masters[-1])  # set last highest number of occurrences (for while loop)
+        vote_res = list(filter(lambda x: x != masters[-1], vote_res))  # remove member from list
+        master = max(vote_res, key=vote_res.count)
+        while vote_res.count(master) >= highest:
+            masters.append(master)
+            vote_res = list(filter(lambda x: x != master, vote_res))    # remove from last
+            master = max(vote_res, key=vote_res.count)
 
-    # ---- Log File (only for GayKing Voting)
-    last = json.loads(last)['GayKing']  # get last ones
+        # if a person was vote from all contestants (and there were more than one contestants)
+        strike = {res[list(res.keys())[0]]}.intersection(*[{element} for element in res.values()])
+        if strike and len(res) > 1:
+            strike = "|".join(strike)
+            debug.debug(f"Strike in {voting}: {strike}")
+            try:
+                strikes = json.load(open(Const.stikeFile, "r"))
 
-    votes1 = int()
-    attds = dict()
-    for element in last:    # create a dict with all names and a corresponding value of 0
-        attds[last[element]] = 0
+            except (json.decoder.JSONDecodeError, FileNotFoundError):
+                strikes = {}
+            if time.strftime('%d.%m.%Y') not in strikes:
+                strikes[time.strftime('%d.%m.%Y')] = []
+            strikes[time.strftime('%d.%m.%Y')].append((voting, strike))
 
-    for element in last:    # if name has been voted, add a 1 to its sum
-        votes1 += 1
-        attds[last[element]] += 1
+        total_masters = "|".join(masters)
+        # write to log (for each voting)
+        with open(log_out_file, "w") as output:
+            try:
+                log = json.load(open(log_out_file, "r"))
+            except (json.decoder.JSONDecodeError, FileNotFoundError):
+                log = {}
 
-    highest = str()
-    HighestInt = int()
-    for element in attds:   # gets the highest of the recently created dict
-        if attds[element] > HighestInt:
-            HighestInt = attds[element]
-            highest = element
+            log[time.strftime('%d.%m.%Y')] = total_masters
+            json.dump(log, output, indent=4)
 
-        elif attds[element] == HighestInt:
-            highest += '|'+element
+        debug.debug(f"Results for {voting}: {total_masters}")
 
-    if HighestInt != 0:
-        KingVar[time.strftime('%d.%m.%Y')] = highest
+    # copy log to last log
+    with open(Const.lastFile, "w") as output:
+        json.dump(dict(Vote), output, indent=4)
 
-        with open(Const.varKingLogFile, 'w') as output:
-            output.write(highest)
+    Vote.set({})
 
-        debug.debug(f"backed up files and logged the GayKing ({time.strftime('%H:%M')})\nGayking: {highest}")
-
-    else:
-        debug.debug('no votes received')
-    if time.strftime('%a') == Const.DoubleVoteResetDay:  # if Monday, reset double votes
+    if time.strftime('%a') == Const.DoubleVoteResetDay:  # if reset day, reset double votes
         dVotes = DV.value.get()
         for element in dVotes:
             dVotes[element] = Const.DoubleVotes
@@ -435,7 +446,7 @@ class AdminFuncs:
             AccManager.new_user(message['Name'], message['pwd'], message['sec'])
 
         except NameError:
-            user.send({"Error": "NameError", "info": "user already exists"})
+            user.send({"Error": "NameError", "info": "user already exists"}, message_type="Error", force=True)
 
         send_success(user)
     
@@ -551,8 +562,12 @@ class ClientFuncs:
         """
         get the GayKings log
         """
-        with open(Const.KingFile, 'r') as inp:
-            user.send(json.load(inp))
+        logs: typing.Dict[str, dict] = {}
+        for log in os.listdir(Const.logDirec):
+            with open(Const.logDirec+log, 'r') as inp:
+                logs[log.rstrip(".json")] = json.load(inp)
+
+        user.send(logs)
 
     @staticmethod
     def get_cal(_message: dict, user: User, *_args) -> None:
@@ -591,11 +606,11 @@ class ClientFuncs:
 
         name = str(user.id) + x
         if not message['voting'] in Vote.get():
-            user.send({'Error': 'NotVoted'})
+            user.send({'Error': 'NotVoted'}, message_type="Error", force=True)
             return
 
         if name not in Vote[message['voting']]:
-            user.send({'Error': 'NotVoted'})
+            user.send({'Error': 'NotVoted'}, message_type="Error", force=True)
             return
         cVote = Vote[message['voting']][name]
 
@@ -630,7 +645,7 @@ class ClientFuncs:
         if resp:
             send_success(user)
         else:
-            user.send({'Error': 'NoVotes'})
+            user.send({'Error': 'NoVotes'}, message_type="Error", force=True)
 
     @staticmethod
     def double_unvote(message: dict, user: User, *_args) -> None:
@@ -652,7 +667,7 @@ class ClientFuncs:
         frees = DV.get_frees(user_id)
 
         if frees is False and frees != 0:
-            user.send({'Error': 'RegistryError'})
+            user.send({'Error': 'RegistryError'}, message_type="Error", force=True)
             return
 
         user.send({'Value': frees})
@@ -707,7 +722,7 @@ class ClientFuncs:
                 "Error": "KeyError",
                 "info": {message['var']}
             }
-        user.send(msg)
+        user.send(msg, message_type="Error", force=True)
 
     @staticmethod
     def set_var(message: dict, user: User, *_args) -> None:
@@ -731,7 +746,7 @@ class ClientFuncs:
         if message["var"] in tmp:
             del tmp[message["var"]]
         else:  # if KeyError occurs
-            user.send({"Error": "KeyError", "info": message["var"]})
+            user.send({"Error": "KeyError", "info": message["var"]}, message_type="Error", force=True)
 
         json.dump(tmp, open(Const.VarsFile, 'w'), indent=4)
         send_success(user)
@@ -781,9 +796,8 @@ if __name__ == '__main__':
         AccManager = Manager(Const.crypFile)
         FunManager = FunctionManager()
 
-        Vote = FileVar(json.load(open(Const.nowFile, 'r')), (Const.nowFile, Const.varNowFile))
+        Vote = FileVar(json.load(open(Const.nowFile, 'r')), [Const.nowFile])
         DV = DoubleVote(Const.doubFile)
-        KingVar = FileVar(json.load(open(Const.KingFile, 'r')), (Const.KingFile, Const.varLogFile))
 
         with open(Const.logFile, 'w') as out:
             out.write('')

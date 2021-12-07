@@ -23,7 +23,5 @@ RUN sudo apt-get upgrade -y
 RUN sudo apt-get install python-dev -y
 RUN sudo pip install --no-cache-dir -r requirements.txt
 
-RUN sudo mkdir /usr/src/app/weather/
-
 # execute command
 CMD [ "sudo", "python", "./FridrichServer.py" ]
