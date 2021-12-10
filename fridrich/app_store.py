@@ -6,7 +6,7 @@ functions like modifying and creating Apps
 Author: Nilusink
 """
 from concurrent.futures import ThreadPoolExecutor, Future
-from fridrich import new_types
+from fridrich import classes
 import socket
 import struct
 import time
@@ -45,7 +45,7 @@ def get_list() -> list:
     return apps
 
 
-def send_apps(_message: dict, user: new_types.User) -> None:
+def send_apps(_message: dict, user: classes.User) -> None:
     """
     :param _message: the message received from the client (not used)
     :param user: the user to send the answer to
@@ -54,7 +54,7 @@ def send_apps(_message: dict, user: new_types.User) -> None:
     user.send(get_list())
 
 
-def download_app(message: dict, user: new_types.User) -> None:
+def download_app(message: dict, user: classes.User) -> None:
     """
     :param message: the message received from the client (for the timestamp)
     :param user: the user to send the answer to
@@ -70,7 +70,7 @@ def download_app(message: dict, user: new_types.User) -> None:
         send_receive(mode="send", filename=directory+message["app"]+'/'+file, destination=user.ip, print_steps=False)
 
 
-def receive_app(message: dict, user: new_types.User, modify: bool | None = False) -> None:
+def receive_app(message: dict, user: classes.User, modify: bool | None = False) -> None:
     """
     :param message: the message received from the client (for the timestamp)
     :param user: the user to send the answer to
@@ -107,7 +107,7 @@ def receive_app(message: dict, user: new_types.User, modify: bool | None = False
         send_receive(mode='receive', print_steps=False, download_directory=directory, thread=False, overwrite=True)
 
 
-def modify_app(message: dict, user: new_types.User) -> None:
+def modify_app(message: dict, user: classes.User) -> None:
     """
             msg = {
             "type": "modify_app",

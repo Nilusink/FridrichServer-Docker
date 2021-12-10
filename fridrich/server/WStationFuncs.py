@@ -4,7 +4,7 @@ for weather-stations to commit data to the pool
 Author: Nilusink
 """
 from fridrich.server.server_funcs import send_success
-from fridrich.new_types import User
+from fridrich.classes import User
 from fridrich.server import Const
 import json
 
@@ -26,7 +26,7 @@ def register(message: dict, user: User, *_args) -> None:
                     'Error': 'RegistryError',
                     "info": "weather-station is already registered"
                 }
-            user.send(mes, message_type="Error", force=True)
+            user.send(mes, message_type="Error")
             return
 
     tmp.append({
@@ -54,7 +54,7 @@ def commit_data(message: dict, user: User, *_args) -> None:
                 'Error': 'RegistryError',
                 "info": "weather-station is not registered yet"
             }
-        user.send(mes, message_type="Error", force=True)
+        user.send(mes, message_type="Error")
         return
 
     try:

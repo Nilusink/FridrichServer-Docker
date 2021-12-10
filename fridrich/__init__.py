@@ -1,7 +1,7 @@
 """
 The fridrich module is a set of scripts used
 to drive a Server, which is used mainly for
-the GayVoting (There is much more to this,
+the Votings (There is much more to this,
 but it's not really easy to explain),
 and a Client that connects to the Server
 

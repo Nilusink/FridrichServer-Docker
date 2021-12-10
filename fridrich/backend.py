@@ -6,7 +6,7 @@ Author: Nilusink
 """
 from concurrent.futures import ThreadPoolExecutor, Future
 from typing import Dict, Callable, Iterable, Any
-from fridrich.new_types import Future as nFuture
+from fridrich.classes import Future as nFuture
 from contextlib import suppress
 from traceback import format_exc
 from fridrich import app_store
@@ -25,7 +25,7 @@ COMM_PROTOCOL_VERSION = "1.1.1"
 ############################################################################
 #                             other functions                              #
 ############################################################################
-def date_for_sort(message) -> str:
+def date_for_sort(message: dict) -> str:
     """
     go from format "hour:minute:second:millisecond - day.month.year" to "year.month.day - hour:minute:second:millisecond"
     """
@@ -167,28 +167,7 @@ class Connection:
         if necessary, process each result
         """
         for response in responses.keys():
-            print(f"matching {response.split('|')[0]}")
-            match response.split("|")[0]:
-                case "gRes":
-                    res = responses[response]
-                    out = dict()
-
-                    for voting in res:
-                        attendants = dict()  # create dictionary with all attendants: votes
-                        nowVoting = res[voting]
-                        for element in [nowVoting[element] for element in nowVoting] + (['Lukas', 'Niclas', 'Melvin'] if voting == 'GayKing' else []):
-                            attendants[element] = 0
-
-                        votes = int()
-                        for element in res[voting]:  # assign votes to attendant
-                            votes += 1
-                            attendants[res[voting][element]] += 1
-                        out[voting] = dict()
-                        out[voting]['totalVotes'] = votes
-                        out[voting]['results'] = attendants
-
-                    responses[response] = out
-
+            match response:
                 case "getFrees":
                     responses[response] = responses[response]['Value']
 
@@ -201,6 +180,27 @@ class Connection:
 
                 case "ping":
                     responses[response] = (time.time() - responses["ping"]["time"]) * 1000
+
+                case _:
+                    if response.startswith("gRes"):  # because it could also be "gRes|last" or "gRes+now"
+                        res = responses[response]
+                        out = dict()
+
+                        for voting in res:
+                            attendants = dict()  # create dictionary with all attendants: votes
+                            nowVoting = res[voting]
+                            for element in [nowVoting[element] for element in nowVoting] + (['Lukas', 'Niclas', 'Melvin'] if voting == 'GayKing' else []):
+                                attendants[element] = 0
+
+                            votes = int()
+                            for element in res[voting]:  # assign votes to attendant
+                                votes += 1
+                                attendants[res[voting][element]] += 1
+                            out[voting] = dict()
+                            out[voting]['totalVotes'] = votes
+                            out[voting]['results'] = attendants
+
+                        responses[response] = out
 
         return responses
 
@@ -228,7 +228,7 @@ class Connection:
             raise AuthError("Not authenticated")
 
         if len(self.__message_pool) == 0:
-            raise ValueError("Message Pool Empty")
+            raise ValueError("Client: Message Pool Empty")
 
         for element in self.__message_pool:
             if "message" in element:
@@ -265,7 +265,6 @@ class Connection:
         send the messages and also receive them
         """
         res = self.wait_for_message(self.__send())
-        self.__assign_results(res)
         return res
 
     def __assign_results(self, results: dict) -> None:
@@ -277,6 +276,9 @@ class Connection:
                 raise ValueError(f"element {element} not in results and getters")
 
             self.__results_getters[element].result = results[element]
+
+        for element in set(self.__results_getters.keys()) - set(results.keys()):
+            self.__results_getters[element].result = False
 
     @property
     def results_getters(self) -> dict:
@@ -316,7 +318,7 @@ class Connection:
             try:
                 mes = cryption_tools.MesCryp.decrypt(data, self.AuthKey.encode())
             except cryption_tools.InvalidToken:
-                self._messages["Error"] = f"cant decrypt: {data}"
+                self._messages["Error"] = {"Error": "MessageError", "info": f"cant decrypt: {data}"}
                 continue
 
             try:
@@ -367,32 +369,49 @@ class Connection:
         start = time.time()
         if self._debug_mode in ('full', 'normal'):
             print(f'waiting for message: {time_sent}')
+
         while time_sent not in self._messages:  # wait for server message
             if self._debug_mode == 'full':
                 print(self._messages)
+
             if timeout and time.time()-start >= timeout:
                 raise NetworkError("no message was received from server before timeout")
 
-            if "Error" in self._messages:
-                error_name, full_error = self._messages["Error"]["Error"],  self._messages["Error"]
-                self._messages.pop("Error")
-                self.error_handler(error_name, full_error)
-                return {}
+            elif "Error" in self._messages:
+                for _ in range(10):
+                    if time_sent in self._messages:
+                        break
+                    time.sleep(.01)
+                break
 
-            if "disconnect" in self._messages:
+            elif "disconnect" in self._messages:
                 raise ConnectionAbortedError("Server ended connection")
             time.sleep(delay)
 
-        out = self._messages[time_sent]
-        del self._messages[time_sent]
-        if "Error" in out:
-            self.error_handler(out["Error"], out)
+        with suppress(KeyboardInterrupt):
+            out = self._messages[time_sent]
+            del self._messages[time_sent]
+
+            if len(out) == 0:
+                raise MessageError("received empty message pool from server")
+
+            out = self.response_handler(out)
+            self.__assign_results(out)
+
+        if "Error" in self._messages:
+            try:
+                error_name, full_error = self._messages["Error"]["Error"],  self._messages["Error"]
+
+            except TypeError:
+                print("Error:", self._messages["Error"])
+                return {}
+
+            self._messages.pop("Error")
+            self.error_handler(error_name, full_error)
+            return {}
+
         if self._debug_mode in ('all', 'normal'):
             print(f"found message: {out}")
-
-        out = self.response_handler(out)
-        if len(out) == 0:
-            raise MessageError("received empty message pool from server")
 
         return out
 
@@ -416,6 +435,10 @@ class Connection:
 
         if not self.loop:
             raise Error("already called 'end'")
+
+        if self:
+            self.end(revive=True)
+
         self.reconnect()
         msg = {  # message
             'type': 'auth',
@@ -483,7 +506,7 @@ class Connection:
         msg = {
                'type': 'gRes',
                'flag': flag,
-               'f_name': "gRes"+"|"+flag
+               'f_name': "gRes"+flag
         }    # set message
         self._send(msg, wait=True)
 
@@ -610,13 +633,13 @@ class Connection:
                'type': 'getVote',
                'flag': flag,
                'voting': voting,
-               'f_name': "getVote"+"|"+flag
+               'f_name': "getVote"+flag
         }    # set message
         self._send(msg, wait=True)
 
         # result handling
         res = nFuture()
-        self.__results_getters[msg["type"]+"|"+msg["flag"]] = res
+        self.__results_getters[msg["f_name"]] = res
         if not wait:
             self.send()
             return res.result
@@ -1085,7 +1108,7 @@ class Connection:
 
     # magical functions
     def __repr__(self) -> str:
-        return f'Backend instance (debug_mode: {self._debug_mode}, user: {self._userN}, authkey: {self.AuthKey})'
+        return f'<Backend instance (debug_mode: {self._debug_mode}, user: {self._userN})>'
 
     def __str__(self) -> str:
         """
@@ -1108,14 +1131,23 @@ class Connection:
     def __enter__(self) -> "Connection":
         return self
 
-    def __exit__(self, exception_type, value, traceback):
+    def __exit__(self, exception_type, value, traceback) -> bool:
         self.end(revive=False)
         if exception_type is not None:
             return False
         return True
 
+    def __del__(self) -> None:
+        print("called end")
+        self.end()
+
+    def __eq__(self, other: "Connection") -> bool:
+        if not type(other) == Connection:
+            return self.__bool__()
+        return all([str(self) == str(other), bool(self) is bool(other), self.server_ip == other.server_ip, self.port == other.port])
+
     # the end
-    def end(self, revive: bool | None = False) -> None:
+    def end(self, revive: bool | None = False):
         """
         close connection with server and logout
         """
@@ -1131,6 +1163,4 @@ class Connection:
         self.loop = False
 
         if revive:
-            self.executor = ThreadPoolExecutor(max_workers=1)
-            app_store.executor = ThreadPoolExecutor()
-            self.loop = True
+            return Connection(debug_mode=self.debug_mode, host=self.server_ip)

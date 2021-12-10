@@ -1,4 +1,4 @@
-from fridrich.new_types import User
+from fridrich.classes import User
 from fridrich.server import Const
 from time import strftime
 

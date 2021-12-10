@@ -8,6 +8,7 @@ from traceback import format_exc
 from contextlib import suppress
 from threading import Thread
 from os import system
+import numpy as np
 import sys
 
 from cryptography.fernet import InvalidToken
@@ -15,7 +16,7 @@ from cryptography.fernet import InvalidToken
 # local imports
 from fridrich.server.accounts import Manager
 from fridrich.server.server_funcs import *
-from fridrich.new_types import *
+from fridrich.classes import *
 
 from fridrich.server import WStationFuncs
 from fridrich.server import UserTools
@@ -51,7 +52,7 @@ def verify(username: str, password: str, cl: socket.socket, address: str) -> Non
         new_user = User(name=logged_in_user["Name"], sec=logged_in_user["sec"], key=key, user_id=logged_in_user["id"], cl=cl, ip=address, function_manager=FunManager.exec, debugger=debug)
         Users.append(new_user)
         
-    debug.debug(new_user)   # print out username, if connected successfully or not and if it is a bot
+    debug.debug(f"Connected to {new_user}, {IsValid=}")   # print out username, if connected successfully or not and if it is a bot
     mes = cryption_tools.MesCryp.encrypt(json.dumps({'Auth': IsValid, 'AuthKey': key}))
     cl.send(mes)
 
@@ -88,7 +89,7 @@ def client_handler() -> None:
     try:
         cl, address = server.accept()
         address = address[0]
-        debug.debug(f'Connected to {address}')
+
     except OSError:
         return
     # try to load the message, else ignore it and restart
@@ -128,16 +129,10 @@ def zero_switch() -> None:
         log_out_file = Const.logDirec+voting+".json"
         vote_res = list(res.values())
 
-        # has to be shortened
         # get masters
-        masters: typing.List[str] = [max(vote_res, key=vote_res.count)]   # create list with members of highest votes
-        highest = vote_res.count(masters[-1])  # set last highest number of occurrences (for while loop)
-        vote_res = list(filter(lambda x: x != masters[-1], vote_res))  # remove member from list
-        master = max(vote_res, key=vote_res.count)
-        while vote_res.count(master) >= highest:
-            masters.append(master)
-            vote_res = list(filter(lambda x: x != master, vote_res))    # remove from last
-            master = max(vote_res, key=vote_res.count)
+        res_arr = np.array(vote_res)
+        m_max = max([x for x in np.unique(res_arr, return_counts=True)[1]])
+        masters = [master for master in np.unique(res_arr) if vote_res.count(master) == m_max]
 
         # if a person was vote from all contestants (and there were more than one contestants)
         strike = {res[list(res.keys())[0]]}.intersection(*[{element} for element in res.values()])
@@ -145,24 +140,25 @@ def zero_switch() -> None:
             strike = "|".join(strike)
             debug.debug(f"Strike in {voting}: {strike}")
             try:
-                strikes = json.load(open(Const.stikeFile, "r"))
-
+                strikes = json.load(open(Const.strikeFile, "r"))
             except (json.decoder.JSONDecodeError, FileNotFoundError):
                 strikes = {}
+
             if time.strftime('%d.%m.%Y') not in strikes:
                 strikes[time.strftime('%d.%m.%Y')] = []
+
             strikes[time.strftime('%d.%m.%Y')].append((voting, strike))
 
         total_masters = "|".join(masters)
         # write to log (for each voting)
-        with open(log_out_file, "w") as output:
-            try:
-                log = json.load(open(log_out_file, "r"))
-            except (json.decoder.JSONDecodeError, FileNotFoundError):
-                log = {}
+        try:
+            log = json.load(open(log_out_file, "r"))
 
-            log[time.strftime('%d.%m.%Y')] = total_masters
-            json.dump(log, output, indent=4)
+        except (json.decoder.JSONDecodeError, FileNotFoundError):
+            log = {}
+
+        log[time.strftime('%d.%m.%Y')] = total_masters
+        json.dump(log, open(log_out_file, "w"), indent=4)
 
         debug.debug(f"Results for {voting}: {total_masters}")
 
@@ -171,6 +167,7 @@ def zero_switch() -> None:
         json.dump(dict(Vote), output, indent=4)
 
     Vote.set({})
+    debug.debug("done voting")
 
     if time.strftime('%a') == Const.DoubleVoteResetDay:  # if reset day, reset double votes
         dVotes = DV.value.get()
@@ -180,7 +177,7 @@ def zero_switch() -> None:
 
 
 @debug.catch_traceback
-def auto_reboot(r_time: str | None = "03:00") -> None:
+def auto_reboot(r_time: str) -> None:
     """
     if time is r_time, reboot the server (format is "HH:MM")
     
@@ -215,7 +212,7 @@ class DoubleVote:
             for element in validUsers:
                 value[element['Name']] = 1
 
-        self.value = new_types.FileVar(value, self.filePath)
+        self.value = classes.FileVar(value, self.filePath)
 
     def vote(self, vote: str, user_id: int) -> bool:
         """
@@ -399,7 +396,7 @@ class FunctionManager:
             }
 
         if error:
-            user.send(error, message_type="Error", force=True)
+            user.send(error, message_type="Error")
 
 
 class AdminFuncs:
@@ -446,7 +443,7 @@ class AdminFuncs:
             AccManager.new_user(message['Name'], message['pwd'], message['sec'])
 
         except NameError:
-            user.send({"Error": "NameError", "info": "user already exists"}, message_type="Error", force=True)
+            user.send({"Error": "NameError", "info": "user already exists"}, message_type="Error")
 
         send_success(user)
     
@@ -503,7 +500,6 @@ class ClientFuncs:
         tmp = Vote.get()
         tmp[message['voting']][str(user.id)] = resp
         Vote.set(tmp)  # set vote
-        debug.debug(f'got vote: {message["vote"]}                     .')  # print that it received vote (debugging)
 
         send_success(user)
 
@@ -606,11 +602,11 @@ class ClientFuncs:
 
         name = str(user.id) + x
         if not message['voting'] in Vote.get():
-            user.send({'Error': 'NotVoted'}, message_type="Error", force=True)
+            user.send({'Error': 'NotVoted'}, message_type="Error")
             return
 
         if name not in Vote[message['voting']]:
-            user.send({'Error': 'NotVoted'}, message_type="Error", force=True)
+            user.send({'Error': 'NotVoted'}, message_type="Error")
             return
         cVote = Vote[message['voting']][name]
 
@@ -645,7 +641,7 @@ class ClientFuncs:
         if resp:
             send_success(user)
         else:
-            user.send({'Error': 'NoVotes'}, message_type="Error", force=True)
+            user.send({'Error': 'NoVotes'}, message_type="Error")
 
     @staticmethod
     def double_unvote(message: dict, user: User, *_args) -> None:
@@ -667,7 +663,7 @@ class ClientFuncs:
         frees = DV.get_frees(user_id)
 
         if frees is False and frees != 0:
-            user.send({'Error': 'RegistryError'}, message_type="Error", force=True)
+            user.send({'Error': 'RegistryError'}, message_type="Error")
             return
 
         user.send({'Value': frees})
@@ -722,7 +718,7 @@ class ClientFuncs:
                 "Error": "KeyError",
                 "info": {message['var']}
             }
-        user.send(msg, message_type="Error", force=True)
+        user.send(msg, message_type="Error")
 
     @staticmethod
     def set_var(message: dict, user: User, *_args) -> None:
@@ -746,7 +742,7 @@ class ClientFuncs:
         if message["var"] in tmp:
             del tmp[message["var"]]
         else:  # if KeyError occurs
-            user.send({"Error": "KeyError", "info": message["var"]}, message_type="Error", force=True)
+            user.send({"Error": "KeyError", "info": message["var"]}, message_type="Error")
 
         json.dump(tmp, open(Const.VarsFile, 'w'), indent=4)
         send_success(user)

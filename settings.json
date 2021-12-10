@@ -7,7 +7,10 @@
 
     "lastFile": "/usr/src/app/data/yes.json",
     "nowFile": "/usr/src/app/data/now.json",
-    "KingFile": "/usr/src/app/data/KingLog.json",
+    "strikeFile": "/usr/src/app/data/strikes.json",
+
+    "logDirec": "/usr/src/app/data/logs/",
+
     "CalFile": "/usr/src/app/data/Calendar.json",
     "crypFile": "/usr/src/app/data/users.enc",
     "versFile": "/usr/src/app/data/Version",

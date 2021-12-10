@@ -5,7 +5,7 @@ defines functions for the Server
 Author: Nilusink
 """
 from fridrich.server import Const
-from fridrich import new_types
+from fridrich import classes
 from fridrich import *
 import typing
 import contextlib
@@ -17,7 +17,7 @@ import traceback
 import socket
 
 
-def send_success(user: new_types.User) -> None:
+def send_success(user: classes.User) -> None:
     """
     send the success message to the client
     """
@@ -41,7 +41,7 @@ def check_if(s: str, d: dict, voting: str) -> str:
     return s
 
 
-def get_new_ones(flag: str, vote_instance: new_types.FileVar, last_file: str, voting: str) -> list:
+def get_new_ones(flag: str, vote_instance: classes.FileVar, last_file: str, voting: str) -> list:
     """
     get all attendants which are not in the default name list
     """
