@@ -4,9 +4,8 @@ used for managing user Accounts
 
 Author: Nilusink
 """
+from typing import List
 import random
-
-from fridrich import *
 import json
 
 
@@ -14,16 +13,6 @@ class Manager:
     """
     account manager
     """
-    # _instance = None
-
-    # def __new__(cls, *args, **kw):
-    # """
-    # check if the class already exists
-    # """
-    # if cls._instance is None:
-    #     cls._instance = super(Manager, cls).__new__(cls)
-    # return cls._instance
-
     def __init__(self, account_file: str) -> None:
         """
         account_file - file to store encrypted account data in
@@ -31,6 +20,10 @@ class Manager:
         self.__encryptionFile = account_file
 
         self.__accounts = self.__get_file()
+
+    @property
+    def names(self) -> List[str]:
+        return [user["Name"] for user in self.__accounts]
 
     def __get_file(self) -> list:
         """
@@ -67,7 +60,7 @@ class Manager:
         """
         change username
         """
-        UsedNames = useful.List.get_inner_dict_values(self.__accounts, 'Name')
+        UsedNames = self.names
         UsedNames.remove(old_user)
 
         element = str()
@@ -98,6 +91,7 @@ class Manager:
                 continue    # to not further iterate all users and get i value of element
 
         self.__accounts[i] = element    # make sure the new element is in list and on correct position
+        self.__write_accounts(self.__accounts)
 
     def new_user(self, username: str, password: str, security_clearance: str) -> None:
         """
@@ -108,9 +102,8 @@ class Manager:
         ids: list
         new_id: int
 
-        UsedNames = useful.List.get_inner_dict_values(self.__accounts, 'Name')
-        if username in UsedNames:
-            raise NameError(f'Username {username} already exists: {UsedNames}')
+        if username in self.names:
+            raise NameError(f'Username {username} already exists: {self.names}')
 
         # create new id for user
         ids = [user["id"] for user in self.__accounts]

@@ -8,7 +8,6 @@ and a Client that connects to the Server
 Author: Nilusink
 """
 from fridrich import cryption_tools
-from fridrich import useful
 
 
 class ConsoleColors:

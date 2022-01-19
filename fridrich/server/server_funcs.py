@@ -6,15 +6,17 @@ Author: Nilusink
 """
 from fridrich.server import Const
 from fridrich import classes
+from sys import platform
 from fridrich import *
-import typing
+from os import system
 import contextlib
-import json
-import datetime
-import types
-import time
 import traceback
+import datetime
+import typing
 import socket
+import types
+import json
+import time
 
 
 def send_success(user: classes.User) -> None:
@@ -60,6 +62,13 @@ def get_new_ones(flag: str, vote_instance: classes.FileVar, last_file: str, voti
             new_ones.append(tmp[voting][element])
     
     return new_ones
+
+
+def reboot() -> None:
+    if platform == "win32":
+        system("shutdown -r -t 0")
+        return
+    system("sudo reboot")
 
 
 class Debug:

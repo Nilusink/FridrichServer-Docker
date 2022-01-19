@@ -16,5 +16,11 @@
         "pwd": "cc5ec2b61fbbdd18d85dd14ab60db397b21b5548999a6afd3ce9557b19c300494a5fd29987e03a6f06677c209b88de47684388de8250671cdd778799eecd018a",
         "sec": "guest",
         "id": 22222
+    },
+    {
+        "Name": "StatsBot",
+        "pwd": "f870a4b512cb7387a98db880e96ff7c075e39b33f5dba05738208b343967478261aa387964ab2cee3de92bfaf35a32498ff65d8782c47991826c4963bb21b54b",
+        "sec": "s_bot",
+        "id": 33333
     }
 ]
