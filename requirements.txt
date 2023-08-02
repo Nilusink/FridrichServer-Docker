@@ -1,5 +1,5 @@
 # install with "pip(3) install -r requirements.txt"
-cryptography==39.0.1
+cryptography==41.0.3
 numpy
 
 # only for GayHistoryAnalyser
